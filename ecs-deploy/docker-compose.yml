@@ -1,0 +1,14 @@
+version: "3"
+    
+services:
+  wordpress:
+    image: paclifton/rv-wp:0.2
+    ports:
+      - "80:80"
+    env_file: ../env/prod
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: rv-wp
+        awslogs-region: us-east-2
+        awslogs-stream-prefix: web
