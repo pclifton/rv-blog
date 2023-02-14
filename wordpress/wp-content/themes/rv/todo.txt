@@ -1,0 +1,7 @@
+This file is just a list of to-dos for the build log:
+-The RV theme has yet to be tested with a sufficient numbenr of posts to trigger pagination
+--Be sure to check both the home page and category pages in this way
+-Still need to consider and work out a way to handle images in posts
+--Probably end up using Lightbox or some such for thumbnail lists...maybe...
+-Need to hash out plugin for handling hour logging
+-RSS link

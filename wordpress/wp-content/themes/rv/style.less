@@ -1,0 +1,102 @@
+// LESS is friggin awesome
+@import "less/bootstrap/bootstrap.less";
+
+body {
+    padding-top: 40px;
+    
+    &.admin-bar {
+        div.topbar {
+            top: 28px;
+        }
+    }
+    
+    div.topbar {
+        div.topbar-inner {
+            div.container {
+                form.searchForm {
+                    float: right;
+                    
+                    input#s {
+                        width: 200px;
+                    }
+                }
+            }
+        }
+    }
+        
+    div#wrapper {
+        .fixed-container();
+    
+        div#header {
+            div#access {
+                .container;
+            }
+        }
+
+        div#main {
+            .row;
+            padding-top: 20px;
+        
+            div#container {
+                .gridColumn();
+                .columns(12);
+                
+                div#content {
+                    div.post, div.page {
+                        .border-radius;
+                        background: @grayLighter;
+                        border: 1px solid @gray;
+                        margin-bottom: 10px;
+                        padding: 10px 20px 20px;
+                        
+                        &:last-child {
+                            margin-bottom: 0;
+                        }
+                        
+                        h2.entry-title a {
+                            color: darken(@analog1, 15);
+                            
+                            &:hover {
+                                color: @analog1;
+                                text-decoration: none;
+                            }
+                        }
+                        
+                        p.wp-caption-text {
+                            font-weight: bold;
+                            text-align: center;
+                        }
+                        
+                        img {
+                            width: 100%;
+                            height: auto;
+                        }
+                    }
+                }
+            }
+
+            div#sidebar {
+                div.widget-area {
+                    .border-radius;
+                    background: @grayLighter;
+                    border: 1px solid @gray;
+                    padding: 0 20px;
+                    
+                    ul {
+                        .unstyled;
+                        
+                        li.widget_categories ul.children {
+							margin-left: 15px;
+                        }
+                    }
+                }
+                .gridColumn();
+                .columns(4);
+            }
+        }
+        
+        div#footer {
+            margin: 20px 0;
+        }
+    }
+}

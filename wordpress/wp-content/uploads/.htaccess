@@ -1,0 +1,3 @@
+# Redirect upload requests for missing files to S3
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^(.*)$ https://rv-wp-static.s3.amazonaws.com/content/uploads/$1 [L,R=301]
