@@ -56,6 +56,11 @@ export class WordpressService extends Construct {
 
         const wpIntegration = new apigateway.LambdaIntegration(handler);
 
+        // Root handler
         api.root.addMethod('ANY', wpIntegration);
+        // Send all child URLs to index.php as well
+        api.root.addProxy({
+            defaultIntegration: wpIntegration
+        });
     }
 }
