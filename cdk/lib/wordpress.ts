@@ -1,28 +1,28 @@
 import { Construct } from 'constructs';
-import * as apigateway from 'aws-cdk-lib/aws-apigateway';
-import * as lambda from 'aws-cdk-lib/aws-lambda';
-import * as ec2 from 'aws-cdk-lib/aws-ec2';
-import * as cdk from 'aws-cdk-lib';
-import * as cloudfront_origins from 'aws-cdk-lib/aws-cloudfront-origins';
-import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
-import * as route53 from 'aws-cdk-lib/aws-route53';
-import * as targets from 'aws-cdk-lib/aws-route53-targets';
-import * as acm from 'aws-cdk-lib/aws-certificatemanager';
-import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as s3_deployment from 'aws-cdk-lib/aws-s3-deployment';
+import { RestApi, LambdaIntegration } from 'aws-cdk-lib/aws-apigateway';
+import { Function, Runtime, Code, LayerVersion } from 'aws-cdk-lib/aws-lambda';
+import { Vpc, SecurityGroup } from 'aws-cdk-lib/aws-ec2';
+import { Duration } from 'aws-cdk-lib';
+import { RestApiOrigin, S3Origin } from 'aws-cdk-lib/aws-cloudfront-origins';
+import { Distribution, SecurityPolicyProtocol, AllowedMethods, ViewerProtocolPolicy, CachePolicy, CacheCookieBehavior, CacheQueryStringBehavior } from 'aws-cdk-lib/aws-cloudfront';
+import { HostedZone, ARecord, RecordTarget } from 'aws-cdk-lib/aws-route53';
+import { CloudFrontTarget } from 'aws-cdk-lib/aws-route53-targets';
+import { DnsValidatedCertificate } from 'aws-cdk-lib/aws-certificatemanager';
+import { Bucket, BucketAccessControl } from 'aws-cdk-lib/aws-s3';
+import { BucketDeployment, Source } from 'aws-cdk-lib/aws-s3-deployment';
 
 export class WordpressService extends Construct {
     constructor(scope: Construct, id: string) {
         super(scope, id);
         
         // Lambda handler
-        const handler = new lambda.Function(this, 'LambdaHandler', {
-            runtime: lambda.Runtime.PROVIDED_AL2,
-            code: lambda.Code.fromAsset('../wordpress'),
+        const handler = new Function(this, 'LambdaHandler', {
+            runtime: Runtime.PROVIDED_AL2,
+            code: Code.fromAsset('../wordpress'),
             handler: 'index.php',
             memorySize: 1024,
             layers: [
-                lambda.LayerVersion.fromLayerVersionArn(
+                LayerVersion.fromLayerVersionArn(
                     this,
                     'php-73-fpm',
                     'arn:aws:lambda:us-east-2:209497400698:layer:php-73-fpm:80'
@@ -30,11 +30,11 @@ export class WordpressService extends Construct {
             ],
             allowPublicSubnet: true,
             // Get existing VPC and security group for RDS access
-            vpc: ec2.Vpc.fromLookup(this, process.env.VPC_ID as string, {
+            vpc: Vpc.fromLookup(this, process.env.VPC_ID as string, {
                 vpcId: process.env.VPC_ID as string
             }),
             securityGroups: [
-                ec2.SecurityGroup.fromLookupById(this, process.env.SG_ID as string, process.env.SG_ID as string)
+                SecurityGroup.fromLookupById(this, process.env.SG_ID as string, process.env.SG_ID as string)
             ],
             environment: {
                 WORDPRESS_DB_HOST: process.env.WORDPRESS_DB_HOST as string,
@@ -58,11 +58,11 @@ export class WordpressService extends Construct {
         });
 
         // APIGW
-        const api = new apigateway.RestApi(this, 'Api', {
+        const api = new RestApi(this, 'Api', {
             restApiName: 'RV WP API service',
         });
 
-        const wpIntegration = new apigateway.LambdaIntegration(handler);
+        const wpIntegration = new LambdaIntegration(handler);
 
         // Root handler
         api.root.addMethod('ANY', wpIntegration);
@@ -73,42 +73,42 @@ export class WordpressService extends Construct {
 
         // Cloudfront
         const siteDomain = 'rv.squawk1200.net';
-        const zone = route53.HostedZone.fromLookup(this, 'Zone', { domainName: 'squawk1200.net' });
-        const distribution = new cloudfront.Distribution(this, 'Distribution', {
-            certificate: new acm.DnsValidatedCertificate(this, 'Certificate', {
+        const zone = HostedZone.fromLookup(this, 'Zone', { domainName: 'squawk1200.net' });
+        const distribution = new Distribution(this, 'Distribution', {
+            certificate: new DnsValidatedCertificate(this, 'Certificate', {
                 domainName: siteDomain,
                 hostedZone: zone,
                 region: 'us-east-1',
             }),
             domainNames: [siteDomain],
-            minimumProtocolVersion: cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
+            minimumProtocolVersion: SecurityPolicyProtocol.TLS_V1_2_2021,
             defaultBehavior: {
-                origin: new cloudfront_origins.RestApiOrigin(api),
-                allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
-                viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+                origin: new RestApiOrigin(api),
+                allowedMethods: AllowedMethods.ALLOW_ALL,
+                viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
                 // No caching by default
-                cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+                cachePolicy: CachePolicy.CACHING_DISABLED,
             }
         });
 
         // Put theme content into existing asset bucket
-        const assetBucket = s3.Bucket.fromBucketArn(this, 'AssetBucket', process.env.ASSET_BUCKET_ARN as string);
-        const assetBucketOrigin = new cloudfront_origins.S3Origin(assetBucket);
+        const assetBucket = Bucket.fromBucketArn(this, 'AssetBucket', process.env.ASSET_BUCKET_ARN as string);
+        const assetBucketOrigin = new S3Origin(assetBucket);
         const assetBehaviorOptions = {
-            allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
-            viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-            cachePolicy: new cloudfront.CachePolicy(this, 'StaticContentPolicy', {
-                cookieBehavior: cloudfront.CacheCookieBehavior.none(),
-                defaultTtl: cdk.Duration.days(90),
-                queryStringBehavior: cloudfront.CacheQueryStringBehavior.none()
+            allowedMethods: AllowedMethods.ALLOW_ALL,
+            viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+            cachePolicy: new CachePolicy(this, 'StaticContentPolicy', {
+                cookieBehavior: CacheCookieBehavior.none(),
+                defaultTtl: Duration.days(90),
+                queryStringBehavior: CacheQueryStringBehavior.none()
             }),
         };
         distribution.addBehavior('wp-content/themes/*', assetBucketOrigin, assetBehaviorOptions);
-        new s3_deployment.BucketDeployment(this, "AssetDeployment", {
-            sources: [s3_deployment.Source.asset('../wordpress/wp-content/themes', {
+        new BucketDeployment(this, "AssetDeployment", {
+            sources: [Source.asset('../wordpress/wp-content/themes', {
                 exclude: ['*.php']
             })],
-            accessControl: s3.BucketAccessControl.PUBLIC_READ,
+            accessControl: BucketAccessControl.PUBLIC_READ,
             destinationBucket: assetBucket,
             destinationKeyPrefix: 'wp-content/themes',
             distribution: distribution,
@@ -118,9 +118,9 @@ export class WordpressService extends Construct {
         distribution.addBehavior('content/*', assetBucketOrigin, assetBehaviorOptions);
 
         // DNS
-        new route53.ARecord(this, 'AliasRecord', {
+        new ARecord(this, 'AliasRecord', {
             recordName: siteDomain,
-            target: route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(distribution)),
+            target: RecordTarget.fromAlias(new CloudFrontTarget(distribution)),
             zone: zone
         });
     }
