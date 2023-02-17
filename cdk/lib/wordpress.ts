@@ -18,6 +18,7 @@ import { CloudFrontTarget } from 'aws-cdk-lib/aws-route53-targets';
 import { DnsValidatedCertificate } from 'aws-cdk-lib/aws-certificatemanager';
 import { Bucket, BucketAccessControl } from 'aws-cdk-lib/aws-s3';
 import { BucketDeployment, Source } from 'aws-cdk-lib/aws-s3-deployment';
+import { RetentionDays } from 'aws-cdk-lib/aws-logs'
 
 export class WordpressService extends Construct {
     constructor(scope: Construct, id: string) {
@@ -36,6 +37,7 @@ export class WordpressService extends Construct {
                     'arn:aws:lambda:us-east-2:209497400698:layer:php-73-fpm:80'
                 ),
             ],
+            logRetention: RetentionDays.ONE_MONTH,
             allowPublicSubnet: true,
             // Get existing VPC and security group for RDS access
             vpc: Vpc.fromLookup(this, process.env.VPC_ID as string, {
