@@ -8,6 +8,8 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as targets from 'aws-cdk-lib/aws-route53-targets';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as s3_deployment from 'aws-cdk-lib/aws-s3-deployment';
 
 export class WordpressService extends Construct {
     constructor(scope: Construct, id: string) {
@@ -70,7 +72,7 @@ export class WordpressService extends Construct {
         });
 
         // Cloudfront
-        const siteDomain = 'rv1.squawk1200.net';
+        const siteDomain = 'rv.squawk1200.net';
         const zone = route53.HostedZone.fromLookup(this, 'Zone', { domainName: 'squawk1200.net' });
         const distribution = new cloudfront.Distribution(this, 'Distribution', {
             certificate: new acm.DnsValidatedCertificate(this, 'Certificate', {
@@ -89,7 +91,9 @@ export class WordpressService extends Construct {
             }
         });
 
-        distribution.addBehavior('wp-content/*', new cloudfront_origins.RestApiOrigin(api), {
+        // Put theme content into existing asset bucket
+        const assetBucket = s3.Bucket.fromBucketArn(this, 'AssetBucket', process.env.ASSET_BUCKET_ARN as string);
+        distribution.addBehavior('wp-content/themes/*', new cloudfront_origins.S3Origin(assetBucket), {
             allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
             viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
             cachePolicy: new cloudfront.CachePolicy(this, 'StaticContentPolicy', {
@@ -98,7 +102,17 @@ export class WordpressService extends Construct {
                 queryStringBehavior: cloudfront.CacheQueryStringBehavior.none()
             }),
         });
+        new s3_deployment.BucketDeployment(this, "AssetDeployment", {
+            sources: [s3_deployment.Source.asset('../wordpress/wp-content/themes', {
+                exclude: ['*.php']
+            })],
+            accessControl: s3.BucketAccessControl.PUBLIC_READ,
+            destinationBucket: assetBucket,
+            destinationKeyPrefix: 'wp-content/themes',
+            distribution: distribution,
+        });
 
+        // DNS
         new route53.ARecord(this, 'AliasRecord', {
             recordName: siteDomain,
             target: route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(distribution)),
