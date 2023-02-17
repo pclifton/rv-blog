@@ -2,6 +2,12 @@ import { Construct } from 'constructs';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as cdk from 'aws-cdk-lib';
+import * as cloudfront_origins from 'aws-cdk-lib/aws-cloudfront-origins';
+import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import * as route53 from 'aws-cdk-lib/aws-route53';
+import * as targets from 'aws-cdk-lib/aws-route53-targets';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 
 export class WordpressService extends Construct {
     constructor(scope: Construct, id: string) {
@@ -61,6 +67,43 @@ export class WordpressService extends Construct {
         // Send all child URLs to index.php as well
         api.root.addProxy({
             defaultIntegration: wpIntegration
+        });
+
+        // Cloudfront
+        const siteDomain = 'rv1.squawk1200.net';
+        const zone = route53.HostedZone.fromLookup(this, 'Zone', { domainName: 'squawk1200.net' });
+        const distribution = new cloudfront.Distribution(this, 'SiteDistribution', {
+            certificate: new acm.DnsValidatedCertificate(this, 'SiteCertificate', {
+                domainName: siteDomain,
+                hostedZone: zone,
+                region: 'us-east-1',
+            }),
+            domainNames: [siteDomain],
+            minimumProtocolVersion: cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
+            defaultBehavior: {
+                origin: new cloudfront_origins.RestApiOrigin(api),
+                allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+                viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+                // No caching by default
+                cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+                // compress: true,
+            }
+        });
+
+        distribution.addBehavior('wp-content/*', new cloudfront_origins.RestApiOrigin(api), {
+            allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+            viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+            cachePolicy: new cloudfront.CachePolicy(this, 'static-content-policy', {
+                cookieBehavior: cloudfront.CacheCookieBehavior.none(),
+                defaultTtl: cdk.Duration.days(90),
+                queryStringBehavior: cloudfront.CacheQueryStringBehavior.none()
+            }),
+        });
+
+        new route53.ARecord(this, 'SiteAliasRecord', {
+            recordName: siteDomain,
+            target: route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(distribution)),
+            zone: zone
         });
     }
 }
