@@ -93,7 +93,8 @@ export class WordpressService extends Construct {
 
         // Put theme content into existing asset bucket
         const assetBucket = s3.Bucket.fromBucketArn(this, 'AssetBucket', process.env.ASSET_BUCKET_ARN as string);
-        distribution.addBehavior('wp-content/themes/*', new cloudfront_origins.S3Origin(assetBucket), {
+        const assetBucketOrigin = new cloudfront_origins.S3Origin(assetBucket);
+        const assetBehaviorOptions = {
             allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
             viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
             cachePolicy: new cloudfront.CachePolicy(this, 'StaticContentPolicy', {
@@ -101,7 +102,8 @@ export class WordpressService extends Construct {
                 defaultTtl: cdk.Duration.days(90),
                 queryStringBehavior: cloudfront.CacheQueryStringBehavior.none()
             }),
-        });
+        };
+        distribution.addBehavior('wp-content/themes/*', assetBucketOrigin, assetBehaviorOptions);
         new s3_deployment.BucketDeployment(this, "AssetDeployment", {
             sources: [s3_deployment.Source.asset('../wordpress/wp-content/themes', {
                 exclude: ['*.php']
@@ -111,6 +113,9 @@ export class WordpressService extends Construct {
             destinationKeyPrefix: 'wp-content/themes',
             distribution: distribution,
         });
+
+        // CF behavior for uploaded images
+        distribution.addBehavior('content/*', assetBucketOrigin, assetBehaviorOptions);
 
         // DNS
         new route53.ARecord(this, 'AliasRecord', {
