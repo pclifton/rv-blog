@@ -1,5 +1,5 @@
 import { Construct } from 'constructs';
-import { RestApi, LambdaIntegration } from 'aws-cdk-lib/aws-apigateway';
+import { RestApi, LambdaIntegration, LogGroupLogDestination } from 'aws-cdk-lib/aws-apigateway';
 import { Function, Runtime, Code, LayerVersion } from 'aws-cdk-lib/aws-lambda';
 import { Vpc, SecurityGroup } from 'aws-cdk-lib/aws-ec2';
 import { Duration } from 'aws-cdk-lib';
@@ -12,13 +12,16 @@ import {
     CachePolicy,
     CacheCookieBehavior,
     CacheQueryStringBehavior,
+    OriginRequestPolicy,
+    OriginRequestQueryStringBehavior,
+    OriginRequestCookieBehavior,
 } from 'aws-cdk-lib/aws-cloudfront';
 import { HostedZone, ARecord, RecordTarget } from 'aws-cdk-lib/aws-route53';
 import { CloudFrontTarget } from 'aws-cdk-lib/aws-route53-targets';
 import { DnsValidatedCertificate } from 'aws-cdk-lib/aws-certificatemanager';
 import { Bucket, BucketAccessControl } from 'aws-cdk-lib/aws-s3';
 import { BucketDeployment, Source } from 'aws-cdk-lib/aws-s3-deployment';
-import { RetentionDays } from 'aws-cdk-lib/aws-logs'
+import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 
 export class WordpressService extends Construct {
     constructor(scope: Construct, id: string) {
@@ -77,20 +80,42 @@ export class WordpressService extends Construct {
         // APIGW
         const api = new RestApi(this, 'Api', {
             restApiName: 'RV WP API service',
+            deployOptions: {
+                accessLogDestination: new LogGroupLogDestination(
+                    new LogGroup(this, 'GatewayLogs', {
+                        retention: RetentionDays.ONE_MONTH,
+                    })
+                ),
+            },
         });
 
-        const siteIntegration = new LambdaIntegration(siteHandler);
+        const siteIntegration = new LambdaIntegration(siteHandler, {
+            requestParameters: {
+                'integration.request.querystring.s': 'method.request.querystring.s',
+            },
+        });
         const apiIntegration = new LambdaIntegration(apiHandler);
 
         // Root handler
-        api.root.addMethod('ANY', siteIntegration);
+        api.root.addMethod('ANY', siteIntegration, {
+            requestParameters: {
+                'method.request.querystring.s': false,
+            },
+        });
         // XML-RPC handler
-        api.root.addResource('xmlrpc.php', {
-            defaultIntegration: apiIntegration
-        }).addMethod('POST', apiIntegration);
+        api.root
+            .addResource('xmlrpc.php', {
+                defaultIntegration: apiIntegration,
+            })
+            .addMethod('POST', apiIntegration);
         // Send all other child URLs to index.php
         api.root.addProxy({
             defaultIntegration: siteIntegration,
+            defaultMethodOptions: {
+                requestParameters: {
+                    'method.request.querystring.s': false,
+                },
+            },
         });
 
         // Cloudfront
@@ -110,6 +135,10 @@ export class WordpressService extends Construct {
                 viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
                 // No caching by default
                 cachePolicy: CachePolicy.CACHING_DISABLED,
+                originRequestPolicy: new OriginRequestPolicy(this, 'OriginRequestPolicy', {
+                    queryStringBehavior: OriginRequestQueryStringBehavior.all(),
+                    cookieBehavior: OriginRequestCookieBehavior.all(),
+                }),
             },
         });
 
