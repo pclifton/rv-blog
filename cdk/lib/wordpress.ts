@@ -24,11 +24,10 @@ export class WordpressService extends Construct {
     constructor(scope: Construct, id: string) {
         super(scope, id);
 
-        // Lambda handler
-        const handler = new Function(this, 'LambdaHandler', {
+        // Lambda handlers
+        const baseHandlerOptions = {
             runtime: Runtime.PROVIDED_AL2,
             code: Code.fromAsset('../wordpress'),
-            handler: 'index.php',
             memorySize: 1024,
             layers: [
                 LayerVersion.fromLayerVersionArn(
@@ -65,6 +64,14 @@ export class WordpressService extends Construct {
                 S3_UPLOADS_KEY: process.env.S3_UPLOADS_KEY as string,
                 S3_UPLOADS_SECRET: process.env.S3_UPLOADS_SECRET as string,
             },
+        };
+        const siteHandler = new Function(this, 'LambdaSiteHandler', {
+            ...baseHandlerOptions,
+            handler: 'index.php',
+        });
+        const apiHandler = new Function(this, 'LambdaApiHandler', {
+            ...baseHandlerOptions,
+            handler: 'xmlrpc.php',
         });
 
         // APIGW
@@ -72,13 +79,18 @@ export class WordpressService extends Construct {
             restApiName: 'RV WP API service',
         });
 
-        const wpIntegration = new LambdaIntegration(handler);
+        const siteIntegration = new LambdaIntegration(siteHandler);
+        const apiIntegration = new LambdaIntegration(apiHandler);
 
         // Root handler
-        api.root.addMethod('ANY', wpIntegration);
-        // Send all child URLs to index.php as well
+        api.root.addMethod('ANY', siteIntegration);
+        // XML-RPC handler
+        api.root.addResource('xmlrpc.php', {
+            defaultIntegration: apiIntegration
+        }).addMethod('POST', apiIntegration);
+        // Send all other child URLs to index.php
         api.root.addProxy({
-            defaultIntegration: wpIntegration,
+            defaultIntegration: siteIntegration,
         });
 
         // Cloudfront
