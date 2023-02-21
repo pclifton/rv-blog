@@ -37,7 +37,7 @@
 <link rel="stylesheet/less" type="text/css" media="all" href="<?php echo str_replace('.css', '.less', get_bloginfo( 'stylesheet_url' )); ?>" />
 <link rel="pingback" href="<?php bloginfo( 'pingback_url' ); ?>" />
 <script type="text/javascript" src="<?=get_bloginfo( 'stylesheet_directory' )?>/js/less-1.1.5.min.js"></script>
-<script type="text/javascript" src="<?=get_bloginfo( 'stylesheet_directory' )?>/js//jquery.js"></script>
+<script type="text/javascript" src="<?=get_bloginfo( 'stylesheet_directory' )?>/js/jquery.js"></script>
 <script type="text/javascript" src="<?=get_bloginfo( 'stylesheet_directory' )?>/js/jquery.defaultText.js"></script>
 <script type="text/javascript" src="<?=get_bloginfo( 'stylesheet_directory' )?>/js/global.js"></script>
 <?php
