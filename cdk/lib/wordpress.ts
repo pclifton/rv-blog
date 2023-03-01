@@ -1,9 +1,9 @@
 import { Construct } from 'constructs';
-import { RestApi, LambdaIntegration, LogGroupLogDestination } from 'aws-cdk-lib/aws-apigateway';
+import { RestApi, LambdaIntegration, LogGroupLogDestination, DomainName } from 'aws-cdk-lib/aws-apigateway';
 import { Function, Runtime, Code, LayerVersion } from 'aws-cdk-lib/aws-lambda';
 import { Vpc, SecurityGroup } from 'aws-cdk-lib/aws-ec2';
 import { Duration } from 'aws-cdk-lib';
-import { RestApiOrigin, S3Origin } from 'aws-cdk-lib/aws-cloudfront-origins';
+import { S3Origin } from 'aws-cdk-lib/aws-cloudfront-origins';
 import {
     Distribution,
     SecurityPolicyProtocol,
@@ -12,15 +12,11 @@ import {
     CachePolicy,
     CacheCookieBehavior,
     CacheQueryStringBehavior,
-    OriginRequestPolicy,
-    OriginRequestQueryStringBehavior,
-    OriginRequestCookieBehavior,
 } from 'aws-cdk-lib/aws-cloudfront';
 import { HostedZone, ARecord, RecordTarget } from 'aws-cdk-lib/aws-route53';
-import { CloudFrontTarget } from 'aws-cdk-lib/aws-route53-targets';
+import { ApiGatewayDomain, CloudFrontTarget } from 'aws-cdk-lib/aws-route53-targets';
 import { DnsValidatedCertificate } from 'aws-cdk-lib/aws-certificatemanager';
-import { Bucket, BucketAccessControl } from 'aws-cdk-lib/aws-s3';
-import { BucketDeployment, Source } from 'aws-cdk-lib/aws-s3-deployment';
+import { Bucket } from 'aws-cdk-lib/aws-s3';
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 
 export class WordpressService extends Construct {
@@ -75,6 +71,7 @@ export class WordpressService extends Construct {
         const apiHandler = new Function(this, 'LambdaApiHandler', {
             ...baseHandlerOptions,
             handler: 'xmlrpc.php',
+            timeout: Duration.seconds(10),
         });
 
         // APIGW
@@ -118,61 +115,51 @@ export class WordpressService extends Construct {
             },
         });
 
-        // Cloudfront
-        const siteDomain = 'rv.squawk1200.net';
+        // Need this zone for two different domain setups
         const zone = HostedZone.fromLookup(this, 'Zone', { domainName: 'squawk1200.net' });
-        const distribution = new Distribution(this, 'Distribution', {
-            certificate: new DnsValidatedCertificate(this, 'Certificate', {
+
+        // Set up the domain for regular web requests
+        const siteDomain = 'rv.squawk1200.net';
+        const siteDomainName = new DomainName(this, 'SiteDomain', {
+            certificate: new DnsValidatedCertificate(this, 'SiteCertificate', {
                 domainName: siteDomain,
+                hostedZone: zone,
+                region: 'us-east-2',
+            }),
+            domainName: siteDomain,
+            mapping: api,
+        });
+        // DNS
+        new ARecord(this, 'SiteRecord', {
+            recordName: siteDomain,
+            target: RecordTarget.fromAlias(new ApiGatewayDomain(siteDomainName)),
+            zone: zone,
+        });
+
+        // Set up Cloudfront for static assets
+        const assetDomain = 'rv-static.squawk1200.net';
+        const distribution = new Distribution(this, 'AssetDistribution', {
+            certificate: new DnsValidatedCertificate(this, 'AssetCertificate', {
+                domainName: assetDomain,
                 hostedZone: zone,
                 region: 'us-east-1',
             }),
-            domainNames: [siteDomain],
+            domainNames: [assetDomain],
             minimumProtocolVersion: SecurityPolicyProtocol.TLS_V1_2_2021,
             defaultBehavior: {
-                origin: new RestApiOrigin(api),
+                origin: new S3Origin(Bucket.fromBucketArn(this, 'AssetBucket', process.env.ASSET_BUCKET_ARN as string)),
                 allowedMethods: AllowedMethods.ALLOW_ALL,
                 viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-                // No caching by default
-                cachePolicy: CachePolicy.CACHING_DISABLED,
-                originRequestPolicy: new OriginRequestPolicy(this, 'OriginRequestPolicy', {
-                    queryStringBehavior: OriginRequestQueryStringBehavior.all(),
-                    cookieBehavior: OriginRequestCookieBehavior.all(),
+                cachePolicy: new CachePolicy(this, 'AssetPolicy', {
+                    cookieBehavior: CacheCookieBehavior.none(),
+                    defaultTtl: Duration.days(90),
+                    queryStringBehavior: CacheQueryStringBehavior.none(),
                 }),
             },
         });
-
-        // Put theme content into existing asset bucket
-        const assetBucket = Bucket.fromBucketArn(this, 'AssetBucket', process.env.ASSET_BUCKET_ARN as string);
-        const assetBucketOrigin = new S3Origin(assetBucket);
-        const assetBehaviorOptions = {
-            allowedMethods: AllowedMethods.ALLOW_ALL,
-            viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-            cachePolicy: new CachePolicy(this, 'StaticContentPolicy', {
-                cookieBehavior: CacheCookieBehavior.none(),
-                defaultTtl: Duration.days(90),
-                queryStringBehavior: CacheQueryStringBehavior.none(),
-            }),
-        };
-        distribution.addBehavior('wp-content/themes/*', assetBucketOrigin, assetBehaviorOptions);
-        new BucketDeployment(this, 'AssetDeployment', {
-            sources: [
-                Source.asset('../wordpress/wp-content/themes', {
-                    exclude: ['*.php'],
-                }),
-            ],
-            accessControl: BucketAccessControl.PUBLIC_READ,
-            destinationBucket: assetBucket,
-            destinationKeyPrefix: 'wp-content/themes',
-            distribution: distribution,
-        });
-
-        // CF behavior for uploaded images
-        distribution.addBehavior('content/*', assetBucketOrigin, assetBehaviorOptions);
-
         // DNS
-        new ARecord(this, 'AliasRecord', {
-            recordName: siteDomain,
+        new ARecord(this, 'AssetRecord', {
+            recordName: assetDomain,
             target: RecordTarget.fromAlias(new CloudFrontTarget(distribution)),
             zone: zone,
         });

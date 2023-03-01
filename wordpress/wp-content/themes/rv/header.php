@@ -34,7 +34,7 @@
 
 	?></title>
 <link rel="profile" href="http://gmpg.org/xfn/11" />
-<link rel="stylesheet/less" type="text/css" media="all" href="<?php echo str_replace('.css', '.less', get_bloginfo( 'stylesheet_url' )); ?>" />
+<link rel="stylesheet/less" type="text/css" media="all" href="<?=get_bloginfo( 'stylesheet_directory' )?>/style.less" />
 <link rel="pingback" href="<?php bloginfo( 'pingback_url' ); ?>" />
 <script type="text/javascript" src="<?=get_bloginfo( 'stylesheet_directory' )?>/js/less-1.1.5.min.js"></script>
 <script type="text/javascript" src="<?=get_bloginfo( 'stylesheet_directory' )?>/js/jquery.js"></script>

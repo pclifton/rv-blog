@@ -518,3 +518,9 @@ function twentyten_image_srcset($sources) {
 }
 
 add_filter('wp_calculate_image_srcset', 'twentyten_image_srcset');
+
+function rv_cloudfront_urls($url) {
+	return str_replace('rv.squawk1200.net', 'rv-static.squawk1200.net', $url);
+}
+
+add_filter('stylesheet_directory_uri', 'rv_cloudfront_urls');
