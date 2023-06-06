@@ -34,6 +34,11 @@ export class WordpressService extends Construct {
                     'php-73-fpm',
                     'arn:aws:lambda:us-east-2:209497400698:layer:php-73-fpm:80'
                 ),
+                LayerVersion.fromLayerVersionArn(
+                    this,
+                    'gd-php-73',
+                    'arn:aws:lambda:us-east-2:403367587399:layer:gd-php-73:18'
+                ),
             ],
             logRetention: RetentionDays.ONE_MONTH,
             allowPublicSubnet: true,
